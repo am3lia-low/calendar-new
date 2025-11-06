@@ -1,4 +1,13 @@
 {
+  "name": "frontend",
+  // ... other fields
+  "scripts": {
+    "start": "react-scripts start",  <-- This line is crucial!
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    // ...
+  },
+  
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

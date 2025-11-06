@@ -24,9 +24,17 @@ export const login = (username, password) => api.post('/login', { username, pass
 export const register = (username, password) => api.post('/register', { username, password });
 
 // --- Data Service (will be used by the calendar) ---
-export const getEvents = (year) => api.get(`/events/${year}`);
-export const saveEvents = (year, events) => api.post(`/events/${year}`, events);
+export const getAllEvents = () => api.get('/api/events/all');
+export const saveAllEvents = (events) => api.post('/api/events/save_all', events);
 
 // (Add getTasks, saveTasks, etc. here)
+
+// --- Profile Service ---
+export const getProfile = () => api.get('/profile');
+
+export const updateProfile = (formData) => {
+  // We send formData directly. Axios will set the 'multipart/form-data' header.
+  return api.post('/profile', formData);
+};
 
 export default api;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   format,
   startOfMonth,
@@ -9,63 +9,45 @@ import {
   isSameMonth,
   isToday,
   addMonths,
-  subMonths,
-  getYear,
-  parseISO
+  subMonths
 } from 'date-fns';
-import api from '../../services/api';
-import toast from 'react-hot-toast';
 
 // Header for the days of the week
 const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const MonthlyView = ({ onDateSelect }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [allEvents, setAllEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch events only when the year changes
-  useEffect(() => {
-    const year = getYear(currentMonth);
-    setLoading(true);
-    api.getEvents(year)
-      .then(response => {
-        setAllEvents(response.data);
-      })
-      .catch(err => {
-        console.error("Failed to fetch events", err);
-        toast.error("Could not load events.");
-      })
-      .finally(() => setLoading(false));
-  }, [currentMonth.getFullYear()]); // Dependency is the YEAR
+const MonthlyView = ({ currentDate, onCurrentDateChange, events, onDateSelect, onEventClick }) => {
 
   // --- Date Grid Calculation ---
-  const firstDayOfMonth = startOfMonth(currentMonth);
-  const lastDayOfMonth = endOfMonth(currentMonth);
+  // All calculations are now derived from the `currentDate` prop
+  const firstDayOfMonth = startOfMonth(currentDate);
+  const lastDayOfMonth = endOfMonth(currentDate);
   const gridStart = startOfWeek(firstDayOfMonth, { weekStartsOn: 1 });
   const gridEnd = endOfWeek(lastDayOfMonth, { weekStartsOn: 1 });
   
+  // `days` is the array of all day-objects to render in the grid
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   // --- Event Filtering ---
+  // Filters the `events` prop (which is already pre-generated)
   const getEventsForDay = (day) => {
     const dayStr = format(day, 'yyyy-MM-dd');
-    return allEvents
+    return events
       .filter(e => e.date === dayStr)
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
   };
 
   // --- Navigation ---
-  const goToNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
-  const goToPrevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
-  const goToToday = () => setCurrentMonth(new Date());
+  // These functions now call the setter prop from AppLayout
+  const goToNextMonth = () => onCurrentDateChange(addMonths(currentDate, 1));
+  const goToPrevMonth = () => onCurrentDateChange(subMonths(currentDate, 1));
+  const goToToday = () => onCurrentDateChange(new Date());
 
   return (
     <div className="flex flex-col h-full bg-water-bg-light p-4">
       {/* Header: Navigation */}
       <header className="flex justify-between items-center mb-4 px-2">
         <h2 className="text-2xl font-bold text-water-blue-end">
-          {format(currentMonth, 'MMMM yyyy')}
+          {format(currentDate, 'MMMM yyyy')}
         </h2>
         <div className="flex items-center space-x-2">
           <button
@@ -102,7 +84,7 @@ const MonthlyView = ({ onDateSelect }) => {
       <div className="grid grid-cols-7 grid-rows-6 gap-1 flex-1">
         {days.map(day => {
           const dayEvents = getEventsForDay(day);
-          const isCurrentMonth = isSameMonth(day, currentMonth);
+          const isCurrentMonth = isSameMonth(day, currentDate);
           const isCurrentToday = isToday(day);
 
           return (
@@ -128,11 +110,15 @@ const MonthlyView = ({ onDateSelect }) => {
                 {dayEvents.map(event => (
                   <div 
                     key={event.id} 
-                    className="flex items-center space-x-1"
+                    className="flex items-center space-x-1 cursor-pointer"
                     title={`${event.title} (${event.startTime})`}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent onDateSelect from firing
+                      onEventClick(event);  // Open the EventModal
+                    }}
                   >
                     <div className="w-2 h-2 rounded-full bg-water-blue-mid flex-shrink-0" />
-                    <span className="text-xs text-gray-700 truncate">
+                    <span className="text-xs text-gray-700 truncate hover:underline">
                       {event.title}
                     </span>
                   </div>
