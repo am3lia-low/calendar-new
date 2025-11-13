@@ -1,97 +1,141 @@
 import React from 'react';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { format, startOfWeek, addDays, parseISO, isSameYear } from 'date-fns';
-import EventWidget from './EventWidget';
-import toast from 'react-hot-toast';
+import { format, startOfWeek, addDays, startOfDay } from 'date-fns';
 
-const timeSlots = [ '08:00', '09:00', /* ... */ '17:00' ];
+const daysOfWeek = [0, 1, 2, 3, 4, 5, 6]; // 0=Mon, 6=Sun
+const hoursOfDay = Array.from({ length: 24 }, (_, i) => i); // [0, 1, ..., 23]
 
-// Accepts events as a prop, no more data fetching
-const WeeklyView = ({ currentDate, events, onEventClick, onGridClick, onEventDrop }) => {
+// Helper function to format the hour label (e.g., 09:00, 17:00)
+const formatHour = (hour) => {
+    return `${String(hour).padStart(2, '0')}:00`;
+};
 
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+const WeeklyView = ({ currentDate, events, onEventClick, onGridClick }) => {
+    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
 
-  const getEventsForDay = (day) => {
-    const dayStr = format(day, 'yyyy-MM-dd');
-    return events
-      .filter(e => e.date === dayStr)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  };
+    const handleCellClick = (day, hour) => {
+        const selectedTime = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0);
+        onGridClick(selectedTime);
+    };
 
-  // DND handler now calls a prop (to be implemented in App.jsx if needed)
-  const onDragEnd = (result) => {
-    const { destination, draggableId } = result;
-    if (!destination) return;
-    
-    const event = events.find(e => e.id === draggableId || e.id.startsWith(draggableId));
-    if (!event) return;
+    // Calculate event position and height for CSS grid layout
+    const getEventStyles = (event) => {
+        const start = new Date(`${event.date}T${event.startTime}`);
+        const end = new Date(`${event.date}T${event.endTime}`);
+        
+        // Calculate the row (hour) and the span (duration in rows/hours)
+        const startHour = start.getHours();
+        const startMinute = start.getMinutes();
+        const durationMinutes = (end.getTime() - start.getTime()) / 60000;
+        
+        // Grid properties
+        // +2 because the time column is column 1, and the day columns start at 2
+        const gridColumn = daysOfWeek.findIndex(i => format(addDays(weekStart, i), 'yyyy-MM-dd') === event.date) + 2;
+        
+        // Grid row starts at the hour index + 1 (since the first row is the header)
+        // We use fractional units for minute precision (e.g., 10:30 starts 0.5 rows down)
+        const gridRowStart = startHour + 1 + (startMinute / 60);
+        const gridRowEnd = gridRowStart + (durationMinutes / 60);
 
-    const newDate = destination.droppableId;
-    if (event.date === newDate) return;
+        return {
+            gridColumn: gridColumn,
+            gridRowStart: Math.floor(gridRowStart), // Start in the hour's row
+            gridRowEnd: Math.ceil(gridRowEnd),     // End in the hour's row
+            height: `${(durationMinutes / 60) * 100}%`,
+            marginTop: `${(startMinute / 60) * 100}%`,
+            zIndex: 10,
+        };
+    };
 
-    // TODO: This logic needs to be moved to App.jsx
-    // For now, it's optimistic UI
-    // onEventDrop(event, newDate);
-    toast.error("Drag-and-drop for recurring events needs to be handled in AppLayout!");
-    // This is complex because it needs to trigger the "This vs Series" modal.
-    // For now, we'll skip the DND-save logic for recurring events.
-  };
-
-  return (
-    <DragDropContext onDragEnd={onDragEnd}>
-      <div className="grid grid-cols-8 h-full bg-water-bg-light">
-        {/* ... (Time column) ... */}
-        {Array.from({ length: 7 }).map((_, i) => {
-          const day = addDays(weekStart, i);
-          const dayStr = format(day, 'yyyy-MM-dd');
-          const dayEvents = getEventsForDay(day);
-
-          return (
-            <div key={dayStr} className="border-r border-gray-200">
-              <div className="h-20 text-center p-4 border-b">
-                <p className="font-semibold">{format(day, 'EEE')}</p>
-                <p className="text-3xl">{format(day, 'd')}</p>
-              </div>
-              
-              <Droppable droppableId={dayStr}>
-                {(provided) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className="h-full p-2 space-y-2"
-                    style={{ minHeight: 'calc(100vh - 10rem)' }}
-                    onClick={() => onGridClick(day)} // Click empty space
-                  >
-                    {dayEvents.map((event, index) => (
-                      <Draggable key={event.id} draggableId={event.id.toString()} index={index}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            onClick={e => {
-                              e.stopPropagation();
-                              onEventClick(event); // Click event
-                            }} 
-                          >
-                            <EventWidget
-                              event={event}
-                              isDragging={snapshot.isDragging}
-                            />
-                          </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
+    return (
+        <div className="flex flex-col h-full overflow-hidden p-4">
+            
+            {/* 1. This container holds the fixed header rows */}
+            <div 
+                className="grid gap-px border-l border-r border-t border-gray-300 bg-white sticky top-0 z-20" 
+                style={{ 
+                    gridTemplateColumns: '80px repeat(7, 1fr)', 
+                    gridTemplateRows: 'auto', // Only one header row
+                }}
+            >
+                {/* Header content (time column placeholder + day headers) */}
+                <div className="bg-gray-100 p-2 border-r border-gray-300"></div> 
+                {daysOfWeek.map(i => {
+                    const day = addDays(weekStart, i);
+                    return (
+                        <div key={i} className="bg-gray-100 p-2 text-center font-semibold border-b border-gray-300">
+                            <div className="text-sm text-gray-600">{format(day, 'E')}</div>
+                            <div className="text-xl">{format(day, 'd')}</div>
+                        </div>
+                    );
+                })}
             </div>
-          );
-        })}
-      </div>
-    </DragDropContext>
-  );
+
+            {/* 2. This container enables scrolling for the hour cells */}
+            <div className="flex-1 min-h-0 overflow-y-auto border-l border-r border-b border-gray-300">
+                <div
+                    className="grid gap-px bg-white"
+                    style={{
+                        // 1fr for time column, then 7 equal columns for the days
+                        gridTemplateColumns: '80px repeat(7, 1fr)', 
+                        gridTemplateRows: `repeat(${hoursOfDay.length}, minmax(50px, auto))`, // 24 hour rows
+                        height: '100%',
+                    }}
+                >
+                    {/* --- TIME LABELS AND GRID CELLS --- */}
+                    {hoursOfDay.map(hour => (
+                        <React.Fragment key={hour}>
+                            {/* Time Label Column (Column 1) */}
+                            <div className="flex justify-end pr-2 py-1 text-xs text-gray-500 bg-gray-50 border-r border-gray-300 h-full">
+                                {formatHour(hour)}
+                            </div>
+
+                            {/* Day Columns (Columns 2-8) */}
+                            {/* ... (Existing day column map content is here) ... */}
+                            {daysOfWeek.map(i => {
+                                const day = addDays(weekStart, i);
+                                const currentDayStart = startOfDay(day);
+                                const cellEvents = events.filter(e => {
+                                    const eventDate = format(new Date(`${e.date}T${e.startTime}`), 'yyyy-MM-dd');
+                                    const cellDate = format(currentDayStart, 'yyyy-MM-dd');
+                                    return eventDate === cellDate && new Date(`${e.date}T${e.startTime}`).getHours() === hour;
+                                });
+
+                                return (
+                                    <div
+                                        key={i}
+                                        className="relative border-b border-r border-gray-200 hover:bg-blue-50 cursor-pointer transition-colors"
+                                        onClick={() => handleCellClick(day, hour)}
+                                    >
+                                        {/* Render event instances... (omitted for brevity) */}
+                                        {cellEvents.map(event => (
+                                            <div
+                                                key={event.id}
+                                                className={`absolute w-full p-1 rounded-lg text-white text-xs overflow-hidden shadow-md`}
+                                                // ... (event styling and logic) ...
+                                                style={{
+                                                    backgroundColor: event.color === 'blue' ? '#4A90E2' : event.color === 'red' ? '#FF6B6B' : '#7ED321',
+                                                    top: `${new Date(`${event.date}T${event.startTime}`).getMinutes() / 60 * 100}%`,
+                                                    height: `${(new Date(`${event.date}T${event.endTime}`).getTime() - new Date(`${event.date}T${event.startTime}`).getTime()) / 60000 / 60 * 100}%`,
+                                                    zIndex: 20
+                                                }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); // Prevents cell click event
+                                                    onEventClick(event);
+                                                }}
+                                            >
+                                                <div className="font-bold truncate">{event.title}</div>
+                                                <div className="truncate">{format(new Date(`${event.date}T${event.startTime}`), 'h:mm a')}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })}
+                        </React.Fragment>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default WeeklyView;

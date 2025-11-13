@@ -1,9 +1,13 @@
 import litellm
 import base64
 import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Set your API keys in your environment variables
-# os.environ["GEMINI_API_KEY"] = "your_key_here"
+os.environ["GEMINI_API_KEY"] = os.getenv('gemini_api')
 
 def parse_image_data(base64_image, prompt):
     # litellm expects the base64 string *without* the 'data:image/png;base64,' prefix
@@ -30,7 +34,7 @@ def parse_image_data(base64_image, prompt):
 
     try:
         response = litellm.completion(
-            model="gemini/gemini-pro-vision", # Using Gemini 2.5 placeholder (via gemini-pro-vision)
+            model="gemini/gemini-2.5-flash", # Using Gemini 2.5 placeholder (via gemini-pro-vision)
             messages=[
                 {
                     "role": "system",

@@ -12,7 +12,7 @@ def get_users():
         with open(USERS_FILE, 'w') as f:
             json.dump({}, f)
         return {}
-    with open(USERS_E, 'r') as f:
+    with open(USERS_FILE, 'r') as f:
         return json.load(f)
 
 def save_users(users):
