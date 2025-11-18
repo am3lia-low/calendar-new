@@ -30,7 +30,7 @@ def register_user(username, password):
     user_id = f"user_{len(users) + 1}"
     users[username] = {
         "id": user_id,
-        "password_hash": generate_password_hash(password)
+        "password_hash": password
     }
     save_users(users)
     
@@ -54,11 +54,11 @@ def login_user(username, password):
     """Logs in an existing user."""
     users = get_users()
     if username not in users:
-        return {"msg": "Bad username or password"}, 401
+        return {"msg": "username not found :00"}, 401
 
     user_data = users[username]
-    if not check_password_hash(user_data["password_hash"], password):
-        return {"msg": "Bad username or password"}, 401
+    if user_data["password_hash"] != password:
+        return {"msg": "incorrect password brodah"}, 401
     
     user_id = user_data["id"]
     access_token = create_access_token(identity=user_id)

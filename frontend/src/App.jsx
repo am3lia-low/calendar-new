@@ -29,6 +29,7 @@ import EventModal from './components/ui/EventModal';
 import ConfirmRecurrenceEditModal from './components/ui/ConfirmRecurrenceEditModal';
 import ProfileModal from './components/ui/ProfileModal';
 import NotificationBlob from './components/ui/NotificationBlob';
+import ChatbotModal from './components/ChatbotModal';
 
 // --- Protected Route Component ---
 const ProtectedRoute = ({ children }) => {
@@ -134,15 +135,19 @@ const AppLayout = () => {
   }, [displayEvents, notifiedEventIds]);
 
   // --- Save Handler ---
-  const saveAllEventsToBackend = (updatedMasterList) => {
-    setAllEvents(updatedMasterList); // Optimistic UI
-    
-    api.saveAllEvents(updatedMasterList)
-      .then(() => toast.success("Calendar saved!"))
-      .catch(err => {
-        toast.error("Save failed. Please try again.");
-      });
-  };
+  const saveAllEventsToBackend = (updatedMasterList, showToast = true) => { // <-- 1. Add showToast
+      setAllEvents(updatedMasterList); // Optimistic UI
+      
+      api.saveAllEvents(updatedMasterList)
+        .then(() => {
+          if (showToast) { // <-- 2. Only show toast if true
+            toast.success("Calendar saved!");
+          }
+        })
+        .catch(err => {
+          toast.error("Save failed. Please try again.");
+        });
+    };
 
   // --- Event Modal & Action Handlers ---
   const handleOpenEventModal = (event) => {
@@ -259,14 +264,51 @@ const AppLayout = () => {
     const newEventsWithIds = events.map(e => ({
       ...e,
       id: uuidv4(),
-      recurrenceRule: 'NONE'
+      recurrenceRule: 'NONE' // AI events are single-instance
     }));
+    
     const updatedMasterList = [...allEvents, ...newEventsWithIds];
-    saveAllEventsToBackend(updatedMasterList);
-    setIsChatbotOpen(false);
+    // Call the save function, but with the toast disabled
+    saveAllEventsToBackend(updatedMasterList, false); // <-- 1. Pass false
+
+    // setIsChatbotOpen(false); // <-- 2. REMOVED
+    
+    // We can still switch the view, that's fine
     setView('week');
     if (events.length > 0) setSelectedDate(new Date(events[0].date));
   };
+
+  const handleScheduleFromText = async (prompt) => {
+    try {
+        const response = await api.scheduleEventFromText(prompt);
+        const newEvents = response.data.events_to_add; 
+
+        // Assuming the backend returns a list of new events:
+        if (newEvents && newEvents.length > 0) {
+            // You would now update your main 'events' state here
+            // For demonstration, let's just log the events:
+            console.log('New events scheduled:', newEvents); 
+            toast.success(`Scheduled ${newEvents.length} new events!`);
+            // **TODO:** Call a function like loadAllEvents to refresh the view
+        } else {
+            toast('Assistant response processed, but no events were added.', { icon: '🤖' });
+        }
+    } catch (error) {
+        toast.error('Failed to schedule event via Chatbot.');
+    }
+};
+
+// Function to handle the existing image analysis (placeholder needed)
+const handleAnalyzeImage = async (base64Image, prompt) => {
+    try {
+        const response = await api.parseImage(base64Image, prompt);
+        // Handle the response, e.g., show parsed event data
+        console.log('Image analysis result:', response.data);
+        toast('Analysis complete. Check console for results.', { icon: '🖼️' });
+    } catch (error) {
+        toast.error('Image analysis failed.');
+    }
+};
 
   // Simple Avatar component
   const Avatar = ({ src }) => {
@@ -307,10 +349,10 @@ const AppLayout = () => {
             Checklist
           </button>
           <button
-            onClick={() => setIsChatbotOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-purple-400 to-purple-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all"
+              onClick={() => setIsChatbotOpen(true)} // <-- Update this
+              className="px-4 py-2 rounded-lg text-white font-semibold transition-colors bg-purple-600 hover:bg-purple-700"
           >
-            AI Chat
+              AI Chat
           </button>
         </div>
 
@@ -381,6 +423,13 @@ const AppLayout = () => {
 
       {isChatbotOpen && (
         <Chatbot 
+          onClose={() => setIsChatbotOpen(false)}
+          onAddSuggestedEvents={handleAddSuggestedEvents}
+        />
+      )}
+
+      {isChatbotOpen && ( 
+        <ChatbotModal 
           onClose={() => setIsChatbotOpen(false)}
           onAddSuggestedEvents={handleAddSuggestedEvents}
         />

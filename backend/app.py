@@ -5,6 +5,9 @@ from flask_cors import CORS
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from event_manager import get_all_events, save_all_events_split
+from ai_parser import parse_image_data, schedule_event_from_text # Import the new function
+import uuid # Need this to create new event IDs
 
 # Import your custom logic modules
 from auth import register_user, login_user
@@ -138,23 +141,96 @@ def handle_save_tasks(year):
     return jsonify({"msg": "Error saving tasks"}), 500
 
 # --- AI Chatbot Endpoint ---
-
 @app.route("/api/chat/parse_image", methods=["POST"])
 @jwt_required()
 def handle_parse_image():
     user_id = get_jwt_identity()
     data = request.json
     base64_image = data.get("image")
-    prompt = data.get("prompt", "Extract calendar event details from this image.")
+    prompt = data.get("prompt", "Extract event details from this image.")
 
     if not base64_image:
         return jsonify({"msg": "No image data provided"}), 400
 
     try:
+        # Pass to the AI parser module
         event_data = parse_image_data(base64_image, prompt)
+        # Event data is just suggestions, so we don't save.
+        # We just return the suggestions to the user for confirmation.
         return jsonify(event_data), 200
     except Exception as e:
         return jsonify({"msg": f"Error parsing image: {str(e)}"}), 500
+
+# backend/app.py
+
+@app.route("/api/chat/schedule_event", methods=["POST"])
+@jwt_required()
+def handle_schedule_event():
+    user_id = get_jwt_identity()
+    
+    # 1. Get the full conversation history from the frontend
+    try:
+        data = request.json
+        history_from_frontend = data.get("history") 
+    except Exception:
+        # If request.json fails (e.g., bad format), catch it here
+        return jsonify({"msg": "Invalid JSON or missing history in request"}), 400
+
+    if not history_from_frontend:
+        return jsonify({"msg": "No history provided"}), 400
+
+    # 2. Call the AI agent with the full conversation history
+    try:
+        ai_response = schedule_event_from_text(history_from_frontend) 
+    except Exception as e:
+        print(f"Error calling AI agent: {e}")
+        return jsonify({
+            "status": "error",
+            "message": "Internal AI communication error."
+        }), 500
+        
+    # 3. Process AI's response
+    if ai_response.get("status") == "success":
+        # --- SUCCESS PATH ---
+        try:
+            new_event = ai_response.get("event")
+            new_event["id"] = f"evt-{uuid.uuid4()}"
+            
+            # Get the *last* user prompt for the description
+            # We must use history_from_frontend[-1]['text'] now that we have the array
+            last_user_prompt = history_from_frontend[-1].get("text", "AI scheduled event")
+            new_event["description"] = f"Created by AI from prompt: '{last_user_prompt}'"
+            
+            all_events = get_all_events(user_id)
+            all_events.append(new_event)
+            save_all_events_split(user_id, all_events)
+            
+            return jsonify({
+                "status": "success",
+                "message": f"Event '{new_event['title']}' created!",
+                "newEvent": new_event
+            }), 200
+
+        except Exception as e:
+            print(f"Error saving event: {e}")
+            return jsonify({
+                "status": "error",
+                "message": "An error occurred while saving the event to the database."
+            }), 500
+            
+    elif ai_response.get("status") == "question":
+        # --- QUESTION PATH ---
+        return jsonify({
+            "status": "question",
+            "message": ai_response.get("message")
+        }), 200
+        
+    else:
+        # --- FALLBACK ERROR ---
+        return jsonify({
+            "status": "question",
+            "message": "Sorry, I had trouble understanding that. Could you rephrase your request?"
+        }), 200
 
 # --- Main Runner ---
 

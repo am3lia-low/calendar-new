@@ -8,7 +8,7 @@ const api = axios.create({
 
 // Request interceptor to attach the JWT token
 api.interceptors.request.use(
-    config => {
+    (config) => {
         const token = localStorage.getItem('token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -46,8 +46,9 @@ export const parseImage = (base64Image, prompt) =>
     api.post('/chat/parse_image', { image: base64Image, prompt });
 
 // ✨ NEW FUNCTION: Send text prompt to backend for scheduling
-export const scheduleEventFromText = (prompt) => 
-    api.post('/chat/schedule_event', { prompt });
+export const scheduleEventFromText = (history) => api.post('/chat/schedule_event', {
+    history: history // Send the whole history object
+});
 
 // --- Profile Service ---
 export const getProfile = () => 

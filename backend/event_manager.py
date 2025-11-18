@@ -2,7 +2,7 @@ import os
 import json
 
 DATA_DIR = "data"
-SUPPORTED_YEARS = [2024, 2025, 2026]
+SUPPORTED_YEARS = ["2024", "2025", "2026"]
 
 def get_user_data_path(user_id, year, data_type="events"):
     filename = f"{year}_{data_type}.json"
