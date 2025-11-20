@@ -19,7 +19,7 @@ from event_manager import (
 from ai_parser import parse_image_data
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
 
 # --- Configuration ---
 app.config["JWT_SECRET_KEY"] = "your-super-secret-key-change-this" # IMPORTANT

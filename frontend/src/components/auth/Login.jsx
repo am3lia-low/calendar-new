@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom'; // Removed useNavigate
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState('');
-  const { login, register, isLoggedIn } = useAuth();
+  // Removed redirecting state
+  // Reverted context destructuring to isAuthenticated and loading
+  const { login, register, isAuthenticated, loading } = useAuth();
+
+  // Removed const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Removed console.log
     setError('');
     
     let success;
@@ -23,11 +28,22 @@ const Login = () => {
     if (!success) {
       setError(isRegister ? 'Registration failed.' : 'Invalid username or password.');
     }
+    // Removed setRedirecting(true) logic, redirection now relies on isAuthenticated updating
   };
 
-  // If user is already logged in, redirect to the main app
-  if (isLoggedIn) {
-    return <Navigate to="/" />;
+  // Handle loading state (important since AuthContext was also reverted)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-water-bg-light">
+        <p className="text-xl text-water-blue-end animate-pulse">Loading...</p>
+      </div>
+    );
+  }
+
+  // If user is authenticated, redirect to the main app
+  // Reverted to check isAuthenticated
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
   }
 
   return (

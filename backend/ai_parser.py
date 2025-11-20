@@ -12,26 +12,23 @@ os.environ["GEMINI_API_KEY"] = os.getenv('gemini_api')
 def get_schedule_agent_prompt():
     """
     Defines the system prompt for the scheduling agent.
-    This prompt instructs the AI on its task, assumptions, and output format.
     """
     
     # Get today's date to use as a default
     today_str = datetime.now().strftime("%Y-%m-%d")
-
-    # backend/ai_parser.py (inside get_schedule_agent_prompt function)
 
     return f"""
     You are an expert calendar scheduling assistant with a **friendly, casual, and encouraging tone**. 
     Your goal is to parse a user's text prompt and extract event details. You MUST respond in one of two JSON formats:
 
     FORMAT 1: EVENT (Success)
-    If you have enough information to schedule the event (must have title, date, startTime, endTime),
+    If you have enough information to schedule the event (must have title, date, startTime, endTime, AND location),
     return this JSON format.
     {{
       "status": "success",
       "event": {{
         "title": "Event Name",
-        "location": "Event Location or null",
+        "location": "Event Location", 
         "date": "YYYY-MM-DD",
         "startTime": "HH:MM",
         "endTime": "HH:MM",
@@ -40,8 +37,8 @@ def get_schedule_agent_prompt():
     }}
 
     FORMAT 2: QUESTION (Needs Info)
-    If any critical information (title, date, time) is missing or ambiguous,
-    return this JSON format. The 'message' field MUST be a friendly, casual question to the user.
+    If any critical information is missing, return this JSON format. 
+    The 'message' field MUST be a friendly, casual question to the user.
     {{
       "status": "question",
       "message": "The friendly, casual clarifying question you need to ask the user."
@@ -53,20 +50,20 @@ def get_schedule_agent_prompt():
     2. Today's date is: {today_str}. If the user doesn't specify a date or day, assume today.
     3. If the user gives a start time but no duration or end time, assume a 1-hour duration.
     4. If recurrence is NOT mentioned, 'recurrenceRule' is "NONE".
-    5. 'Location' is optional. If missing, set to null.
-    6. 'title', 'date', 'startTime', 'endTime' are CRITICAL. If any are missing, you MUST ask (FORMAT 2).
+    5. **CRITICAL INFORMATION**: 'title', 'date', 'startTime', 'endTime', and **'location'** are ALL required.
+    6. If **location** is missing, you MUST ask for it (e.g., "Where is this happening?", "Is this online or in person?").
 
     ---
     TONE & REPLY EXAMPLES (Crucial for the 'message' field in FORMAT 2):
 
     **IF CRITICAL INFO IS MISSING:**
-    - Missing Location: "where's this event taking place?"
+    - Missing Location: "where's this event taking place?", "do you have a location for this?", "is this at the office or remote?"
     - Missing Time: "what time is this event?"
     - Missing Name/Title: "what should i call the event?"
     - Missing Recurrence Details: "How often should this repeat? (e.g., daily, weekly, monthly)"
     
     **IF ALL INFO IS PRESENT (FORMAT 1):**
-    - You must ensure the 'event' JSON is complete. The frontend will handle the success message based on the data you provide.
+    - You must ensure the 'event' JSON is complete.
 
     ---
     """
@@ -90,7 +87,8 @@ def schedule_event_from_text(history_from_frontend):
         response = litellm.completion(
             model="gemini/gemini-2.5-flash", # or gemini-2.5-flash
             messages=messages_for_ai, # Pass the full history
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            num_retries = 3
         )
         
         raw_content = response.choices[0].message.content
@@ -104,32 +102,63 @@ def schedule_event_from_text(history_from_frontend):
             "message": "Sorry, I had trouble understanding that. Could you rephrase your request?"
         }
 
-# --- Keep the image parser from before ---
 def parse_image_data(base64_image, prompt):
     """
-    Parses an image and returns a list of suggested events.
-    (This is your existing function, modified to fit)
+    Parses an image (screenshot) and returns a list of suggested events.
+    Optimized for Weekly Timetables (Horizontal and Vertical grids).
     """
-    image_data = base64_image.split(",")[1]
+    # Clean the base64 string if needed
+    if "," in base64_image:
+        image_data = base64_image.split(",")[1]
+    else:
+        image_data = base64_image
 
-    system_prompt = """
-    You are an assistant that extracts event information from images.
-    Return a JSON object: {"suggested_events": [...]}.
-    The JSON structure for each event must be:
-    {
-      "title": "Event Title",
-      "description": "Event Description (if any)",
-      "date": "YYYY-MM-DD",
-      "startTime": "HH:MM",
-      "endTime": "HH:MM",
-      "location": "Event Location (if any)"
-    }
-    If you cannot find any events, return an empty list.
+    # Get today's date to help the AI calculate "Next Monday" etc.
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    system_prompt = f"""
+    You are an advanced Data Extraction AI specialized in reading Calendar Timetables and Screenshots.
+    Your task is to extract event details from the provided image.
+
+    ---
+    CRITICAL INSTRUCTION FOR TIMETABLES:
+    1. **Identify the Layout**:
+       - **Vertical Columns = Days**: (e.g., Outlook/Google Calendar). Look at the top header for dates/days. Look at the left sidebar for times.
+       - **Horizontal Rows = Days**: (e.g., University Timetables). Look at the left sidebar for Days (Mon, Tue...). Look at the top header for Times (0800, 0900...).
+    
+    2. **Extract Details**:
+       - **Title**: The main text in the block (e.g., "GEN2061X", "Meeting").
+       - **Location**: Often found below the title (e.g., "ERC-SR10", "Teams").
+       - **Time**: Infer the start/end time based on the block's position relative to the time axis.
+       - **Date**: 
+          - If a specific date is visible (e.g., "27 Mon"), use that year/month. 
+          - If ONLY the day name is visible (e.g., "MON"), assume it is for the *upcoming* occurrence of that day relative to today ({today_str}).
+
+    3. **Handle Recurring/Academic Notes**:
+       - If an event says "Weeks 3, 5, 7" or "Tutorial [01]", add that text to the **description**. Do NOT try to create complex recursion rules yet, just create a single instance for the next occurrence.
+
+    ---
+    OUTPUT FORMAT (JSON ONLY):
+    Return a JSON object with a key "suggested_events" containing a list of events.
+    {{
+      "suggested_events": [
+        {{
+          "title": "Course Code or Event Name",
+          "description": "Type (Lec/Tut) + Weeks info",
+          "location": "Room number or Venue",
+          "date": "YYYY-MM-DD", 
+          "startTime": "HH:MM",
+          "endTime": "HH:MM"
+        }}
+      ]
+    }}
+    If no events are found, return "suggested_events": [].
     """
 
     try:
         response = litellm.completion(
-            model="gemini/gemini-pro-vision",
+            # We use 1.5-flash as it has excellent vision capabilities for grids
+            model="gemini/gemini-2.5-flash",
             messages=[
                 {
                     "role": "system",
@@ -142,16 +171,24 @@ def parse_image_data(base64_image, prompt):
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/jpeg;base66,{image_data}"
+                                "url": f"data:image/jpeg;base64,{image_data}"
                             }
                         }
                     ]
                 }
             ],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            num_retries=3
         )
-        
+
         raw_content = response.choices[0].message.content
+        
+        # --- DEBUGGING ---
+        print("\n============= AI RAW VISION RESPONSE =============")
+        print(raw_content)
+        print("==================================================\n")
+        # -----------------
+        
         parsed_json = json.loads(raw_content)
         return parsed_json
 

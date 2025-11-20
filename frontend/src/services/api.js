@@ -1,77 +1,93 @@
+// frontend/src/services/api.js
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5001/api';
-
+// 1. Create the Axios instance
 const api = axios.create({
-    baseURL: API_BASE_URL,
+    baseURL: 'http://127.0.0.1:5001', 
+    headers: {
+        'Content-Type': 'application/json',
+    },
 });
 
-// Request interceptor to attach the JWT token
+// 2. Request Interceptor for Authentication
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('access_token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
         return config;
     },
-    error => {
+    (error) => {
         return Promise.reject(error);
     }
 );
 
+// 3. API Functions (Exported Individually)
+
 // --- Auth Service ---
 export const login = (username, password) => 
-    api.post('/login', { username, password });
+    api.post('/api/login', { username, password });
 
 export const register = (username, password) => 
-    api.post('/register', { username, password });
+    api.post('/api/register', { username, password });
+
+export const getProfile = () => 
+    api.get('/api/profile');
+
+export const updateProfile = (formData) => 
+    api.post('/api/profile', formData);
+
 
 // --- Event Service ---
 export const getAllEvents = () => 
-    api.get('/events/all');
+    api.get('/api/events/all');
 
 export const saveAllEvents = (events) => 
-    api.post('/events/save_all', events);
+    api.post('/api/events/save_all', { events });
 
-// --- Task Service ---
-export const getTasks = (year) => 
-    api.get(`/tasks/${year}`);
+export const updateRecurrence = (data) => 
+    api.put('/api/events/recurrence', data);
 
-export const saveTasks = (tasks, year) => 
-    api.post(`/tasks/${year}`, tasks);
+
+// --- Task / Checklist Service ---
+export const loadTasks = () => 
+    api.get('/api/tasks');
+
+export const saveTask = (task) => 
+    api.post('/api/tasks', task);
+
+export const deleteTask = (taskId) => 
+    api.delete(`/api/tasks/${taskId}`);
+
+export const updateTask = (taskId, data) => 
+    api.put(`/api/tasks/${taskId}`, data);
+
 
 // --- Chatbot Service ---
 export const parseImage = (base64Image, prompt) => 
-    api.post('/chat/parse_image', { image: base64Image, prompt });
+    api.post('/api/chat/parse_image', { image: base64Image, prompt });
 
-// ✨ NEW FUNCTION: Send text prompt to backend for scheduling
-export const scheduleEventFromText = (history) => api.post('/chat/schedule_event', {
-    history: history // Send the whole history object
-});
+// Agentic Scheduling (Takes full history)
+export const scheduleEventFromText = (history) => 
+    api.post('/api/chat/schedule_event', { history });
 
-// --- Profile Service ---
-export const getProfile = () => 
-    api.get('/profile');
 
-export const updateProfile = (formData) => {
-    // We send formData directly. Axios will set the 'multipart/form-data' header.
-    return api.post('/profile', formData);
-};
-
-// --- FINAL EXPORT ---
-// IMPORTANT: We need to export all these functions within a default object
-// so App.jsx can import them all easily.
-
-export default {
+// 4. Default Export (For backward compatibility)
+const exportedApi = {
     login,
     register,
-    getAllEvents,
-    saveAllEvents,
-    getTasks,
-    saveTasks,
-    parseImage,
-    scheduleEventFromText,
     getProfile,
     updateProfile,
+    getAllEvents,
+    saveAllEvents,
+    updateRecurrence,
+    loadTasks,
+    saveTask,
+    deleteTask,
+    updateTask,
+    parseImage,
+    scheduleEventFromText,
 };
+
+export default exportedApi;
