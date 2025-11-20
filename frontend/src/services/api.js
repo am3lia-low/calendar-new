@@ -44,7 +44,7 @@ export const getAllEvents = () =>
     api.get('/api/events/all');
 
 export const saveAllEvents = (events) => 
-    api.post('/api/events/save_all', { events });
+    api.post('/api/events/save_all', events);
 
 export const updateRecurrence = (data) => 
     api.put('/api/events/recurrence', data);

@@ -115,10 +115,17 @@ def handle_get_all_events():
 @jwt_required()
 def handle_save_all_events():
     user_id = get_jwt_identity()
-    all_events = request.json
+    all_events = request.json # <-- The potential issue is here if it's not a list
+
+    # FIX: Ensure all_events is a list before passing it to the manager
+    if not isinstance(all_events, list):
+        # Log error and return a bad request response if the data format is wrong
+        print(f"Error: Received data is not a list. Type: {type(all_events)}")
+        return jsonify({"msg": "Invalid data format. Expected a list of events."}), 400
+
     if save_all_events_split(user_id, all_events):
         return jsonify({"msg": "Events saved successfully"}), 200
-    return jsonify({"msg": "Error saving events"}), 500
+    return jsonify({"msg": "Failed to save events"}), 500
 
 # --- Checklist Endpoints ---
 
